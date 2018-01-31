@@ -268,7 +268,7 @@ public class BackupEndpointObserver extends BackupBaseRegionObserver implements 
             if (!BackupUtils.isSpliceTable(namespace, tableName))
                 return;
             BackupUtils.captureIncrementalChanges(conf, region, path, fs, rootDir, backupDir,
-                    tableName, resultFile.getPath().getName(), preparing.get());
+                    tableName, resultFile.getPath(), preparing.get());
         } catch (Throwable t) {
             throw CoprocessorUtils.getIOException(t);
         }

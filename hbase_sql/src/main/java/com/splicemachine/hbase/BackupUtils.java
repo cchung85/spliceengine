@@ -23,10 +23,7 @@ import com.splicemachine.pipeline.Exceptions;
 import com.splicemachine.si.constants.SIConstants;
 import com.splicemachine.utils.SpliceLogUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.*;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionFileSystem;
@@ -155,7 +152,7 @@ public class BackupUtils {
      * 1) There is an ongoing full backup, flush is not triggered by preparing and backup for this region is done.
      * 2) There is no ongoing backup, AND there is a previous full/incremental backup
      * 3) There is an ongoing incremental backup
-     * @param fileName
+     * @param filePath
      * @throws StandardException
      */
     public static void captureIncrementalChanges( Configuration conf,
@@ -165,7 +162,7 @@ public class BackupUtils {
                                                   Path rootDir,
                                                   Path backupDir,
                                                   String tableName,
-                                                  String fileName,
+                                                  Path filePath,
                                                   boolean preparing) throws StandardException {
         boolean shouldRegister = false;
         try {
@@ -202,7 +199,7 @@ public class BackupUtils {
                 shouldRegister = true;
             }
             if (shouldRegister) {
-                registerHFile(conf, fs, backupDir, region, fileName);
+                registerHFile(conf, fs, backupDir, region, filePath);
             }
         }
         catch (Exception e) {
@@ -243,32 +240,38 @@ public class BackupUtils {
     /**
      * Register this HFile for incremental backup by creating an empty file
      * backup/data/splice/tableName/regionName/V/fileName
-     * @param fileName
+     * @param filePath
      * @throws StandardException
      */
     private static void registerHFile(Configuration conf,
                                       FileSystem fs,
                                       Path backupDir,
                                       HRegion region,
-                                      String fileName) throws StandardException {
+                                      Path filePath) throws StandardException {
 
         FSDataOutputStream out = null;
+        String fileName = filePath.getName();
         try {
             if (!fs.exists(new Path(backupDir, BackupRestoreConstants.REGION_FILE_NAME))) {
                 HRegionFileSystem.createRegionOnFileSystem(conf, fs, backupDir.getParent(), region.getRegionInfo());
             }
             Path p = new Path(backupDir.toString() + "/" + SIConstants.DEFAULT_FAMILY_NAME + "/" + fileName);
             if (LOG.isDebugEnabled()) {
-                SpliceLogUtils.debug(LOG, "Register %s for incrmental backup", p.toString());
+                SpliceLogUtils.debug(LOG, "Register %s for incremental backup", p.toString());
             }
             out = fs.create(p);
+            out.writeUTF(BackupRestoreConstants.BACKUP_VERSION);
+            FileStatus[] fileStatuses = fs.listStatus(filePath);
+            long size = fileStatuses[0].getLen();
+            out.writeLong(size);
         }
         catch (Exception e) {
             throw Exceptions.parseException(e);
         }
         finally {
             try {
-                out.close();
+                if (out != null)
+                    out.close();
             }
             catch (Exception e) {
                 throw Exceptions.parseException(e);
